@@ -113,6 +113,30 @@
     return true;
   });
 
+  /* Creates `count` new voters in a class, each with a fresh code (for schools without a
+     student list).  References continue after the highest existing number for that class,
+     e.g. 10A-001, 10A-002 …, so deleting voters never causes clashes. */
+  A.generateVoters = async (ctx, className, count) => {
+    const cls = String(className || '').trim();
+    const n = Math.floor(Number(count));
+    if (!Number.isFinite(n) || n < 1 || n > 2000) throw UI.fieldError({ count: 'Enter a number from 1 to 2000.' });
+    if (cls.length > 40) throw UI.fieldError({ class_name: 'Keep the class name under 40 characters.' });
+    const prefix = (cls.replace(/[^A-Za-z0-9]+/g, '').toUpperCase() || 'V').slice(0, 20);
+    const existing = await S.api.listVoters(ctx.election.id, { q: prefix + '-', page: 0, pageSize: 5000 });
+    const re = new RegExp('^' + prefix + '-(\\d+)$', 'i');
+    let max = 0;
+    existing.rows.forEach((v) => { const m = re.exec(v.student_reference); if (m) max = Math.max(max, Number(m[1])); });
+    const rows = Array.from({ length: n }, (_, i) => ({ student_reference: `${prefix}-${String(max + i + 1).padStart(3, '0')}`, class_name: cls }));
+    const out = await S.api.importVoters(ctx.election.id, rows);
+    await ctx.reload();
+    if (!out.created.length) {
+      UI.toast(`No codes were created${out.skipped[0] ? ` (${out.skipped[0].reason})` : ''}.`, 'warn', 7000);
+      return out;
+    }
+    await A.showCodes(ctx, out.created, `${U.plural(out.created.length, 'voting code')} — ${cls || 'no class'}`);
+    return out;
+  };
+
   /* ================================================================== Voters */
   A.pages.voters = {
     title: 'Voters', cap: 'voters.manage', needsElection: true,
@@ -153,8 +177,10 @@
           const pages = Math.max(1, Math.ceil(total / st.pageSize));
           if (!total) {
             U.setHtml(tableEl, UI.empty({ icon: 'users', title: st.q || st.cls || st.status ? 'No voters match' : 'No voters yet',
-              text: st.q || st.cls || st.status ? 'Try a different search or filter.' : 'Import your student list to generate voting codes.',
-              action: !st.q && !st.cls && !st.status && editable ? html`<button class="btn btn-primary" data-act-import>${UI.icon('upload', 18)}<span>Import CSV</span></button>` : '' }));
+              text: st.q || st.cls || st.status ? 'Try a different search or filter.' : 'Import your student list, or create a number of codes per class.',
+              action: !st.q && !st.cls && !st.status && editable ? html`<div class="empty-actions">
+                <button class="btn btn-primary" data-act-import>${UI.icon('upload', 18)}<span>Import CSV</span></button>
+                <a class="btn btn-secondary" href="#/admin/codes">${UI.icon('key', 18)}<span>Create codes for a class</span></a></div>` : '' }));
             return;
           }
           U.setHtml(tableEl, html`
@@ -217,11 +243,25 @@
     title: 'Voting Codes', cap: 'voters.manage', needsElection: true,
     async render(el, ctx) {
       const e = ctx.election;
-      const classes = await S.api.listClasses(e.id);
+      let classes = await S.api.listClasses(e.id);
       const draw = () => {
         const mine = S.vault.items.filter((x) => x.electionId === e.id);
         U.setHtml(el, html`
           ${A.head('Voting codes', 'Voting codes', 'Each eligible student has one private code. Codes are random, unique and work exactly once.')}
+          ${e.status === 'closed' ? '' : html`
+          <section class="card card-pad create-codes">
+            <div class="card-title">${UI.icon('plus', 20)} Create new voting codes for a class</div>
+            <p class="muted small">Adds new voters to a class and gives each one a code — use this when you hand out codes by class instead of importing a student list. They are numbered automatically (e.g. 10A-001, 10A-002…), continuing after any that already exist.</p>
+            <form class="form create-codes-form" id="gen" novalidate>
+              <div class="field"><label class="label" for="gen-cls">Class</label>
+                <input class="input" id="gen-cls" name="class_name" maxlength="40" list="gen-cls-list" placeholder="e.g. 10A" autocomplete="off">
+                <datalist id="gen-cls-list">${classes.filter(Boolean).map((c) => html`<option value="${c}">`)}</datalist></div>
+              <div class="field"><label class="label" for="gen-n">How many codes</label>
+                <input class="input" id="gen-n" name="count" type="number" min="1" max="2000" value="30"></div>
+              <div class="field"><span class="label">&nbsp;</span>
+                <button class="btn btn-primary" type="submit">${UI.icon('key', 18)}<span>Create codes</span></button></div>
+            </form>
+          </section>`}
           <section class="card card-pad how-codes">
             <div class="hc-icon">${UI.icon('shield', 28)}</div>
             <div><div class="card-title">How codes are protected</div>
@@ -238,9 +278,9 @@
                 : html`<p class="muted">Codes you generate (by importing voters or issuing new codes) appear here until you sign out or close this tab. They are never saved in the browser.</p>`}
             </section>
             <section class="card card-pad">
-              <div class="card-title">Issue new codes</div>
-              ${e.status === 'closed' ? html`<p class="muted">The election is closed.</p>` : html`
-              <p class="muted small">Replaces the codes of students who have <b>not voted yet</b>. Their previous codes stop working immediately. Use this if slips were lost, or to print a fresh set for a class.</p>
+              <div class="card-title">Replace lost or leaked codes</div>
+              ${e.status === 'closed' ? html`<p class="muted">The election is closed.</p>` : !classes.length ? html`<p class="muted small">There are no voters yet. Create codes above or import a student list on the Voters page.</p>` : html`
+              <p class="muted small">Gives <b>existing</b> students who have <b>not voted yet</b> a new code. Their previous codes stop working immediately. Use this if slips were lost or seen by others.</p>
               <form class="form" id="regen" novalidate>
                 <label class="radio-row"><input type="radio" name="target" value="class" checked><span>Everyone in class</span>
                   <select class="input input-sm" name="cls" aria-label="Class">${classes.map((c) => html`<option value="${c}">${c || '(no class)'}</option>`)}</select></label>
@@ -270,6 +310,21 @@
         if (t.closest('[data-vclear]')) { S.vault.items = S.vault.items.filter((x) => x.electionId !== e.id); draw(); }
       });
       el.addEventListener('submit', async (ev) => {
+        if (ev.target.id === 'gen') {
+          ev.preventDefault();
+          const form = ev.target;
+          UI.clearFieldErrors(form);
+          const v = UI.formValues(form);
+          await UI.busy(form.querySelector('[type=submit]'), async () => {
+            try {
+              const out = await A.generateVoters(ctx, v.class_name, v.count);
+              if (out.created.length) { classes = await S.api.listClasses(e.id); draw(); }
+            } catch (err) {
+              if (err.fields) UI.showFieldErrors(form, err.fields); else UI.toastError(err);
+            }
+          });
+          return;
+        }
         if (ev.target.id !== 'regen') return;
         ev.preventDefault();
         const v = UI.formValues(ev.target);

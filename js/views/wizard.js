@@ -291,15 +291,11 @@
           else if (t.closest('[data-editcand]')) { const c = ctx.bundle.candidates.find((x) => x.id === t.closest('[data-editcand]').dataset.editcand); if (await A.editCandidate(ctx, c)) draw(); }
           else if (t.closest('[data-import]')) { await A.importVoters(ctx); await ctx.reload(); draw(); }
           else if (t.closest('[data-generate]')) {
-            const n = U.clamp(Number(body.querySelector('#gen-n').value) || 0, 1, 2000);
+            const n = Number(body.querySelector('#gen-n').value);
             const cls = body.querySelector('#gen-cls').value.trim();
-            const prefix = (cls || 'V').replace(/\s+/g, '').toUpperCase();
-            const start = ctx.bundle.voters.total + 1;
-            const rows = Array.from({ length: n }, (_, i) => ({ student_reference: `${prefix}-${String(start + i).padStart(3, '0')}`, class_name: cls }));
             await UI.busy(t.closest('[data-generate]'), async () => {
-              const out = await S.api.importVoters(ctx.election.id, rows);
-              await ctx.reload();
-              if (out.created.length) await A.showCodes(ctx, out.created, `${U.plural(out.created.length, 'voting code')}${cls ? ' — ' + cls : ''}`);
+              try { await A.generateVoters(ctx, cls, n); }
+              catch (err) { if (err.fields) UI.toast(Object.values(err.fields)[0], 'error'); else throw err; }
               draw();
             });
           } else if (t.closest('[data-open]')) { if (await A.changeStatus(ctx, 'open')) S.go('/admin/dashboard'); }
