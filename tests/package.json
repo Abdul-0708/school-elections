@@ -1,0 +1,12 @@
+{
+  "name": "student-election-tests",
+  "private": true,
+  "type": "module",
+  "description": "Database + adapter tests for the Student Government Election System (runs locally, no Supabase needed).",
+  "scripts": {
+    "test": "node sql.test.mjs && node adapter.test.mjs"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8"
+  }
+}
