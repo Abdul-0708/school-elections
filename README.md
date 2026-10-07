@@ -30,6 +30,19 @@ Routes: `#/` home · `#/vote` station · `#/results` projector · `#/admin` admi
 
 Other admins: create them in Supabase → Users, then grant a role in the app (Settings → Administrators).
 
+## This school's installation
+| What | Address |
+|---|---|
+| Home | https://abdul-0708.github.io/school-elections/ |
+| Voting station | https://abdul-0708.github.io/school-elections/#/vote |
+| Projector | https://abdul-0708.github.io/school-elections/#/results |
+| Admin | https://abdul-0708.github.io/school-elections/#/admin |
+| Demo station / results | …`#/vote/demo` · …`#/results/demo` |
+
+Hosted on GitHub Pages from [Abdul-0708/school-elections](https://github.com/Abdul-0708/school-elections); database: Supabase project `school-elections` (Frankfurt).
+
+**Updating the site:** edit the files, then `git commit` and `git push`. GitHub republishes in about a minute. Don't push changes while voting is open, and hard-refresh (Ctrl+F5) the station PCs after an update.
+
 ## Election day
 - **Stations:** open `…/#/vote` on each lab PC. Kiosk: `chrome.exe --kiosk --incognito https://your-site/#/vote`. Stations reset automatically after each vote, time out idle ballots, and sign out any admin session. Never sign in as admin on a station.
 - **Projector:** open `…/#/results`, press **F** (full screen). Keys: **O** overview · **P** position · **R** rotate · **W** winners (after closing) · ←/→ change position.
