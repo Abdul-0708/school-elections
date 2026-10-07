@@ -31,6 +31,10 @@ await db.exec(`
   grant usage on schema public to anon, authenticated;
 `);
 const schema = fs.readFileSync(schemaPath, 'utf8');
+// Supabase runs pg-safeupdate: every UPDATE/DELETE (even inside triggers) must have a WHERE clause.
+const noWhere = [...schema.matchAll(/\b(update\s+(?:public|private)\.\w+\s+set|delete\s+from\s+(?:public|private)\.\w+)[^;]*;/gis)]
+  .filter((m) => !/\bwhere\b/i.test(m[0])).map((m) => m[0].split('\n')[0].trim());
+ok(noWhere.length === 0, 'every UPDATE/DELETE has a WHERE clause (Supabase safeupdate)', noWhere);
 await db.exec(schema);
 console.log('schema applied');
 await db.exec(schema);

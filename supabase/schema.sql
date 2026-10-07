@@ -654,7 +654,10 @@ create or replace function private.after_school_change() returns trigger
 language plpgsql security definer set search_path = '' as $$
 begin
   perform private.audit(null, 'school.updated', jsonb_build_object('name', new.name));
-  update public.election_pulse set config_version = config_version + 1, updated_at = now();
+  -- Bump every election's pulse so open screens reload the new branding.
+  -- (Supabase's pg-safeupdate rejects UPDATE/DELETE without WHERE, even inside triggers.)
+  update public.election_pulse set config_version = config_version + 1, updated_at = now()
+   where election_id is not null;
   return null;
 end $$;
 drop trigger if exists schools_after on public.schools;
